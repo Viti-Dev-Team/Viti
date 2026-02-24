@@ -35,4 +35,4 @@ This project is a personal development experiment focused on building a customiz
 To compile the project into a standalone `.exe` file:
 
 ```bash
-pyinstaller --onefile --windowed --icon=icon.ico --add-data "bookmarks.json;." viti_browser.py
+pyinstaller --windowed --icon=icon.ico --add-data "bookmarks.json;." viti_browser.py
