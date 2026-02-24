@@ -1,6 +1,7 @@
 import sys
 import json
 import os
+
 from PyQt5.QtCore import QUrl
 from PyQt5.QtWidgets import (
     QApplication,
@@ -23,6 +24,7 @@ from PyQt5.QtWebEngineWidgets import (
 
 BOOKMARK_FILE = "bookmarks.json"
 HISTORY_FILE = "history.json"
+THEME_FILE = "theme.json"
 
 
 class BrowserTab(QWebEngineView):
@@ -40,15 +42,21 @@ class VitiBrowser(QMainWindow):
         super().__init__()
         self.setWindowTitle("Viti Browser")
         self.resize(1400, 800)
+
         self.profile = QWebEngineProfile.defaultProfile()
         self.bookmarks = []
         self.history = []
+
         self.load_bookmarks()
         self.load_history()
+
         self.init_ui()
+        theme = self.load_theme()
+        self.apply_theme(theme)
         self.add_new_tab("https://www.google.com")
 
     def init_ui(self):
+
         self.tabs = QTabWidget()
         self.tabs.setTabsClosable(True)
         self.tabs.setMovable(True)
@@ -86,6 +94,11 @@ class VitiBrowser(QMainWindow):
         download_btn.triggered.connect(self.show_download_manager)
         toolbar.addAction(download_btn)
 
+        theme_btn = QAction("🌙", self)
+        theme_btn.triggered.connect(self.toggle_theme)
+        toolbar.addAction(theme_btn)
+        self.theme_btn = theme_btn
+
         new_tab_btn = QAction("➕", self)
         new_tab_btn.triggered.connect(lambda: self.add_new_tab("https://www.google.com"))
         toolbar.addAction(new_tab_btn)
@@ -101,29 +114,56 @@ class VitiBrowser(QMainWindow):
 
         self.profile.downloadRequested.connect(self.handle_download)
 
-        self.apply_style()
+    def apply_theme(self, theme):
 
-    def apply_style(self):
-        self.setStyleSheet("""
-            QMainWindow { background-color: #1e1f22; }
-            QToolBar { background-color: #2a2b2f; padding: 6px; }
-            QLineEdit {
-                background-color: #35363a;
-                border-radius: 14px;
-                padding: 8px;
-                color: white;
-                border: 1px solid #3f4045;
-            }
-            QTabBar::tab {
-                background: #2a2b2f;
-                color: white;
-                padding: 8px;
-                margin: 4px;
-                border-radius: 8px;
-                min-width: 140px;
-            }
-            QTabBar::tab:selected { background: #35363a; }
-        """)
+        if theme == "light":
+            self.theme_btn.setText("☀️")
+            self.setStyleSheet("""
+                QMainWindow { background-color: #f0f0f0; }
+                QToolBar { background-color: #e0e0e0; padding: 6px; }
+                QLineEdit {
+                    background-color: white;
+                    border-radius: 14px;
+                    padding: 8px;
+                    color: black;
+                    border: 1px solid #ccc;
+                }
+                QTabBar::tab {
+                    background: #d6d6d6;
+                    color: black;
+                    padding: 8px;
+                    margin: 4px;
+                    border-radius: 8px;
+                }
+                QTabBar::tab:selected { background: white; }
+            """)
+        else:
+            self.theme_btn.setText("🌙")
+            self.setStyleSheet("""
+                QMainWindow { background-color: #1e1f22; }
+                QToolBar { background-color: #2a2b2f; padding: 6px; }
+                QLineEdit {
+                    background-color: #35363a;
+                    border-radius: 14px;
+                    padding: 8px;
+                    color: white;
+                    border: 1px solid #3f4045;
+                }
+                QTabBar::tab {
+                    background: #2a2b2f;
+                    color: white;
+                    padding: 8px;
+                    margin: 4px;
+                    border-radius: 8px;
+                }
+                QTabBar::tab:selected { background: #35363a; }
+            """)
+
+    def toggle_theme(self):
+        current = self.load_theme()
+        new_theme = "light" if current == "dark" else "dark"
+        self.save_theme(new_theme)
+        self.apply_theme(new_theme)
 
     def add_new_tab(self, url=None):
         if not url:
@@ -167,6 +207,11 @@ class VitiBrowser(QMainWindow):
     def update_url_bar(self, qurl):
         self.url_bar.setText(qurl.toString())
 
+    def sync_url_bar(self):
+        browser = self.current_browser()
+        if browser:
+            self.url_bar.setText(browser.url().toString())
+
     def add_bookmark(self):
         browser = self.current_browser()
         if not browser:
@@ -177,19 +222,6 @@ class VitiBrowser(QMainWindow):
         })
         self.save_bookmarks()
         self.refresh_bookmarks_menu()
-        QMessageBox.information(self, "Bookmark", "Added")
-
-    def delete_bookmark(self, index):
-        reply = QMessageBox.question(
-            self,
-            "Delete",
-            "Delete bookmark?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        if reply == QMessageBox.Yes:
-            self.bookmarks.pop(index)
-            self.save_bookmarks()
-            self.refresh_bookmarks_menu()
 
     def load_bookmarks(self):
         if os.path.exists(BOOKMARK_FILE):
@@ -206,26 +238,31 @@ class VitiBrowser(QMainWindow):
         self.bookmarks_menu.clear()
         for index, bookmark in enumerate(self.bookmarks):
             submenu = QMenu(bookmark["title"], self)
+
             open_action = QAction("Open", self)
             open_action.triggered.connect(
                 lambda _, url=bookmark["url"]:
                 self.add_new_tab(url)
             )
+
             delete_action = QAction("Delete", self)
             delete_action.triggered.connect(
                 lambda _, idx=index:
                 self.delete_bookmark(idx)
             )
+
             submenu.addAction(open_action)
             submenu.addAction(delete_action)
             self.bookmarks_menu.addMenu(submenu)
 
+    def delete_bookmark(self, index):
+        if 0 <= index < len(self.bookmarks):
+            self.bookmarks.pop(index)
+            self.save_bookmarks()
+            self.refresh_bookmarks_menu()
+
     def add_to_history(self, title, url):
-        self.history.append({
-            "title": title,
-            "url": url,
-            "date": str(QUrl(url))
-        })
+        self.history.append({"title": title, "url": url})
         self.save_history()
         self.refresh_history_menu()
 
@@ -244,16 +281,19 @@ class VitiBrowser(QMainWindow):
         self.history_menu.clear()
         for index, item in enumerate(self.history):
             submenu = QMenu(item["title"], self)
+
             open_action = QAction("Open", self)
             open_action.triggered.connect(
                 lambda _, url=item["url"]:
                 self.add_new_tab(url)
             )
+
             delete_action = QAction("Delete", self)
             delete_action.triggered.connect(
                 lambda _, idx=index:
                 self.delete_history_item(idx)
             )
+
             submenu.addAction(open_action)
             submenu.addAction(delete_action)
             self.history_menu.addMenu(submenu)
@@ -266,8 +306,7 @@ class VitiBrowser(QMainWindow):
 
     def handle_download(self, download):
         downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
-        if not os.path.exists(downloads_path):
-            os.makedirs(downloads_path)
+        os.makedirs(downloads_path, exist_ok=True)
         file_path = os.path.join(downloads_path, download.suggestedFileName())
         download.setPath(file_path)
         download.accept()
@@ -290,10 +329,16 @@ class VitiBrowser(QMainWindow):
                 for file in os.listdir(downloads_path):
                     self.download_list.addItem(file)
 
-    def sync_url_bar(self):
-        browser = self.current_browser()
-        if browser:
-            self.url_bar.setText(browser.url().toString())
+    def load_theme(self):
+        if os.path.exists(THEME_FILE):
+            with open(THEME_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("theme", "dark")
+        return "dark"
+
+    def save_theme(self, theme):
+        with open(THEME_FILE, "w", encoding="utf-8") as f:
+            json.dump({"theme": theme}, f, indent=4)
 
 
 if __name__ == "__main__":
